@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Splore</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
+    canvas { display: block; }
+
+    #ui {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 10;
+    }
+
+    /* DNA Bar */
+    #dna-bar-container {
+      position: absolute; top: 18px; left: 50%; transform: translateX(-50%);
+      width: 280px; text-align: center;
+    }
+    #dna-label {
+      color: #aaffaa; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+      margin-bottom: 4px; text-shadow: 0 0 8px #00ff88;
+    }
+    #dna-bar-track {
+      width: 100%; height: 12px; background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(0,255,100,0.3); border-radius: 6px; overflow: hidden;
+    }
+    #dna-bar-fill {
+      height: 100%; width: 0%; background: linear-gradient(90deg, #00cc44, #88ff44);
+      border-radius: 6px; transition: width 0.3s ease;
+      box-shadow: 0 0 8px #00ff44;
+    }
+    #dna-tokens {
+      color: #88ff88; font-size: 10px; margin-top: 3px; letter-spacing: 1px;
+    }
+
+    /* Health & Energy */
+    #stats-panel {
+      position: absolute; bottom: 24px; left: 24px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .stat-row { display: flex; align-items: center; gap: 8px; }
+    .stat-icon { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; }
+    .stat-track {
+      width: 120px; height: 8px; background: rgba(0,0,0,0.5);
+      border-radius: 4px; overflow: hidden;
+    }
+    .stat-fill { height: 100%; border-radius: 4px; transition: width 0.2s ease; }
+    #health-icon { background: #ff4444; box-shadow: 0 0 6px #ff2222; }
+    #energy-icon { background: #ffaa00; box-shadow: 0 0 6px #ff8800; }
+    #health-fill { background: linear-gradient(90deg, #cc2222, #ff4444); width: 100%; }
+    #energy-fill { background: linear-gradient(90deg, #cc6600, #ffaa00); width: 100%; }
+
+    /* Zone Panel */
+    #zone-panel {
+      position: absolute; bottom: 24px; right: 24px;
+      background: rgba(0,0,0,0.45); border: 1px solid rgba(100,200,255,0.2);
+      border-radius: 8px; padding: 10px 14px; min-width: 140px;
+    }
+    #zone-title {
+      color: rgba(150,220,255,0.6); font-size: 10px; letter-spacing: 2px;
+      text-transform: uppercase; margin-bottom: 8px;
+    }
+    .zone-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+    .zone-label { color: rgba(200,230,255,0.5); font-size: 10px; width: 36px; }
+    .zone-track {
+      flex: 1; height: 5px; background: rgba(255,255,255,0.1);
+      border-radius: 3px; overflow: hidden; position: relative;
+    }
+    .zone-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+    .zone-val { color: rgba(200,230,255,0.7); font-size: 10px; width: 22px; text-align: right; }
+    #zone-temp .zone-fill { background: linear-gradient(90deg, #0044ff, #ff2200); }
+    #zone-pres .zone-fill { background: linear-gradient(90deg, #8844ff, #224488); }
+    #zone-rad .zone-fill { background: linear-gradient(90deg, #003300, #aaff00); }
+    #zone-acid .zone-fill { background: linear-gradient(90deg, #004400, #44ff44); }
+    .zone-danger { animation: danger-pulse 0.5s ease-in-out infinite alternate; }
+    @keyframes danger-pulse { from { opacity: 1; } to { opacity: 0.3; } }
+
+    /* Interaction prompts */
+    #interaction-hint {
+      position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 20px; padding: 6px 16px;
+      color: rgba(255,255,255,0.8); font-size: 13px; letter-spacing: 1px;
+      display: none; text-align: center;
+    }
+    #interaction-hint.show { display: block; }
+    .key-hint {
+      display: inline-block; background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;
+      padding: 1px 6px; font-size: 11px; margin: 0 2px;
+    }
+
+    /* Damage overlay */
+    #damage-overlay {
+      position: absolute; inset: 0; pointer-events: none;
+      border-radius: 0; opacity: 0;
+      transition: opacity 0.1s;
+    }
+
+    /* Evolution menu */
+    #evo-menu {
+      position: absolute; inset: 0; display: none;
+      background: rgba(0,5,15,0.85); backdrop-filter: blur(4px);
+      z-index: 20; pointer-events: all;
+      align-items: center; justify-content: center;
+    }
+    #evo-menu.open { display: flex; }
+    #evo-panel {
+      background: rgba(5,15,30,0.95); border: 1px solid rgba(0,150,255,0.3);
+      border-radius: 16px; padding: 32px; max-width: 700px; width: 90%;
+      max-height: 85vh; overflow-y: auto;
+    }
+    #evo-panel h2 {
+      color: #88ccff; font-size: 20px; margin-bottom: 6px;
+      text-shadow: 0 0 12px #0088ff;
+    }
+    #evo-panel .evo-subtitle {
+      color: rgba(150,200,255,0.5); font-size: 12px; margin-bottom: 24px;
+      letter-spacing: 1px;
+    }
+    .evo-category { margin-bottom: 20px; }
+    .evo-category-title {
+      color: rgba(150,200,255,0.6); font-size: 11px; letter-spacing: 3px;
+      text-transform: uppercase; margin-bottom: 10px; padding-bottom: 4px;
+      border-bottom: 1px solid rgba(100,150,255,0.2);
+    }
+    .evo-genes { display: flex; flex-wrap: wrap; gap: 10px; }
+    .evo-gene {
+      background: rgba(0,20,50,0.8); border: 1px solid rgba(0,100,200,0.3);
+      border-radius: 10px; padding: 10px 14px; cursor: pointer;
+      transition: all 0.2s; min-width: 140px;
+      pointer-events: all;
+    }
+    .evo-gene:hover:not(.locked):not(.owned) {
+      background: rgba(0,40,100,0.9); border-color: rgba(0,200,255,0.6);
+      transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,150,255,0.3);
+    }
+    .evo-gene.owned {
+      border-color: rgba(0,255,100,0.5); background: rgba(0,30,20,0.8);
+      cursor: default;
+    }
+    .evo-gene.locked { opacity: 0.4; cursor: not-allowed; }
+    .gene-name { color: #aaddff; font-size: 13px; font-weight: bold; margin-bottom: 3px; }
+    .gene-desc { color: rgba(150,200,255,0.5); font-size: 11px; line-height: 1.4; }
+    .gene-cost { color: #88ff88; font-size: 11px; margin-top: 6px; }
+    .gene-owned-badge {
+      color: #44ff88; font-size: 10px; margin-top: 4px; letter-spacing: 1px;
+    }
+    #evo-dna-available {
+      color: #88ff88; font-size: 14px; margin-bottom: 20px;
+      text-shadow: 0 0 8px #00ff44;
+    }
+    #evo-close {
+      margin-top: 20px; background: rgba(0,100,200,0.3);
+      border: 1px solid rgba(0,150,255,0.4); color: #88ccff;
+      padding: 10px 28px; border-radius: 8px; cursor: pointer;
+      font-size: 14px; letter-spacing: 1px; pointer-events: all;
+      transition: all 0.2s;
+    }
+    #evo-close:hover { background: rgba(0,150,255,0.4); }
+
+    /* Death screen */
+    #death-screen {
+      position: absolute; inset: 0; display: none;
+      background: rgba(0,0,0,0); z-index: 30;
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px;
+      transition: background 1s;
+    }
+    #death-screen.show {
+      display: flex; background: rgba(0,0,0,0.8);
+    }
+    #death-title {
+      color: #ff4444; font-size: 28px; letter-spacing: 4px;
+      text-shadow: 0 0 20px #ff0000; text-transform: uppercase;
+    }
+    #death-sub {
+      color: rgba(255,100,100,0.6); font-size: 14px; letter-spacing: 2px;
+    }
+
+    /* Mating animation */
+    #mating-flash {
+      position: absolute; inset: 0; pointer-events: none;
+      background: radial-gradient(circle, rgba(255,150,255,0.3) 0%, transparent 70%);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    #mating-flash.show { opacity: 1; }
+
+    /* Size indicator */
+    #size-indicator {
+      position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+      color: rgba(150,220,255,0.4); font-size: 11px; letter-spacing: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <!-- DNA Bar -->
+    <div id="dna-bar-container">
+      <div id="dna-label">Material Genético</div>
+      <div id="dna-bar-track"><div id="dna-bar-fill"></div></div>
+      <div id="dna-tokens">0 tokens de evolução</div>
+    </div>
+
+    <div id="size-indicator">Tamanho: 1.0×</div>
+
+    <!-- Stats -->
+    <div id="stats-panel">
+      <div class="stat-row">
+        <div class="stat-icon" id="health-icon"></div>
+        <div class="stat-track"><div class="stat-fill" id="health-fill"></div></div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-icon" id="energy-icon"></div>
+        <div class="stat-track"><div class="stat-fill" id="energy-fill"></div></div>
+      </div>
+    </div>
+
+    <!-- Zone Panel -->
+    <div id="zone-panel">
+      <div id="zone-title">Zona</div>
+      <div class="zone-row" id="zone-temp">
+        <span class="zone-label">Temp</span>
+        <div class="zone-track"><div class="zone-fill" id="zone-temp-fill" style="width:50%"></div></div>
+        <span class="zone-val" id="zone-temp-val">5.0</span>
+      </div>
+      <div class="zone-row" id="zone-pres">
+        <span class="zone-label">Press</span>
+        <div class="zone-track"><div class="zone-fill" id="zone-pres-fill" style="width:50%"></div></div>
+        <span class="zone-val" id="zone-pres-val">5.0</span>
+      </div>
+      <div class="zone-row" id="zone-rad">
+        <span class="zone-label">Rad</span>
+        <div class="zone-track"><div class="zone-fill" id="zone-rad-fill" style="width:50%"></div></div>
+        <span class="zone-val" id="zone-rad-val">5.0</span>
+      </div>
+      <div class="zone-row" id="zone-acid">
+        <span class="zone-label">Acidez</span>
+        <div class="zone-track"><div class="zone-fill" id="zone-acid-fill" style="width:50%"></div></div>
+        <span class="zone-val" id="zone-acid-val">5.0</span>
+      </div>
+    </div>
+
+    <!-- Interaction hints -->
+    <div id="interaction-hint"></div>
+
+    <!-- Damage overlay -->
+    <div id="damage-overlay"></div>
+
+    <!-- Mating flash -->
+    <div id="mating-flash"></div>
+
+    <!-- Evolution Menu -->
+    <div id="evo-menu">
+      <div id="evo-panel">
+        <h2>Evolução Disponível</h2>
+        <p class="evo-subtitle">Escolha um gene para adicionar ao seu organismo</p>
+        <div id="evo-dna-available">DNA disponível: 0</div>
+        <div id="evo-gene-list"></div>
+        <button id="evo-close">Continuar sem evoluir</button>
+      </div>
+    </div>
+
+    <!-- Death Screen -->
+    <div id="death-screen">
+      <div id="death-title">Célula Destruída</div>
+      <div id="death-sub">Ressurgindo com memória genética...</div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

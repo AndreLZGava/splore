@@ -1,0 +1,8 @@
+{
+  "name": "splore",
+  "version": "0.1.0",
+  "scripts": {
+    "start": "python3 -m http.server 3000",
+    "dev": "npx --yes vite --port 3000 --open"
+  }
+}
