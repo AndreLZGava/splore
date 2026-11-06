@@ -1,4 +1,5 @@
 import { CONFIG, GENE_DEFS, GENE_CATEGORIES } from './config.js';
+import { getZoneAt } from './noise.js';
 
 export class UI {
   constructor() {
@@ -34,20 +35,35 @@ export class UI {
 
     this._dmgPulse = 0;
     this._lastDNA  = 0;
+
+    // Minimap
+    this._minimapCanvas = document.getElementById('minimap-canvas');
+    this._minimapCtx = this._minimapCanvas.getContext('2d');
+    this._minimapCoords = document.getElementById('minimap-coords');
+    this._minimapScale = 4;   // world units per pixel
+    this._minimapTrail = [];  // trail of visited positions
+    this._minimapTrailTimer = 0;
   }
 
   updateStats(player) {
     // DNA bar
-    const pct = (player.dna.points % CONFIG.DNA_PER_EVOLUTION) / CONFIG.DNA_PER_EVOLUTION * 100;
+    const hasAll = player.dna.hasAllEvolutions();
+    const pct = hasAll ? 100 : (player.dna.points % CONFIG.DNA_PER_EVOLUTION) / CONFIG.DNA_PER_EVOLUTION * 100;
     this._dnaFill.style.width = pct + '%';
-    const tokens = player.dna.tokens;
-    this._dnaTokens.textContent = tokens > 0
-      ? `${tokens} token${tokens > 1 ? 's' : ''} — [ESC] evoluir`
-      : `${Math.floor(player.dna.points % CONFIG.DNA_PER_EVOLUTION)} / ${CONFIG.DNA_PER_EVOLUTION} DNA`;
-    if (tokens > 0) {
+    
+    if (hasAll) {
+      this._dnaTokens.textContent = "Ápice da Evolução Atingido!";
       this._dnaFill.style.boxShadow = '0 0 16px #00ff88, 0 0 6px #44ffaa';
     } else {
-      this._dnaFill.style.boxShadow = '0 0 8px #00ff44';
+      const tokens = player.dna.tokens;
+      this._dnaTokens.textContent = tokens > 0
+        ? `${tokens} token${tokens > 1 ? 's' : ''} — [ESC] evoluir`
+        : `${Math.floor(player.dna.points % CONFIG.DNA_PER_EVOLUTION)} / ${CONFIG.DNA_PER_EVOLUTION} DNA`;
+      if (tokens > 0) {
+        this._dnaFill.style.boxShadow = '0 0 16px #00ff88, 0 0 6px #44ffaa';
+      } else {
+        this._dnaFill.style.boxShadow = '0 0 8px #00ff44';
+      }
     }
 
     // Health & Energy
@@ -77,13 +93,13 @@ export class UI {
   updateInteractionHint(nearestAlly, nearestFood, player) {
     const hints = [];
     if (nearestAlly && player.mateCooldown <= 0 && player.energy >= CONFIG.MATE_ENERGY_REQUIRED) {
-      hints.push(`<span class="key-hint">W</span> Acoplar`);
+      hints.push(`<span class="key-hint">SPACE</span> Acoplar`);
     }
     if (nearestFood && player.dna.canEat(nearestFood.type)) {
       const foodNames = { vegetal: 'Vegetal', iron: 'Ferro', sulfur: 'Enxofre', radiation: 'Radiação', decomposed: 'Matéria', animal: 'Animal' };
       hints.push(`<span class="key-hint">E</span> Comer ${foodNames[nearestFood.type] || nearestFood.type}`);
     }
-    if (player.dna.tokens > 0) {
+    if (player.dna.tokens > 0 && !player.dna.hasAllEvolutions()) {
       hints.push(`<span class="key-hint">ESC</span> Evoluir`);
     }
     if (hints.length > 0) {
@@ -226,5 +242,181 @@ export class UI {
 
     document.body.appendChild(el);
     setTimeout(() => el.remove(), duration);
+  }
+
+  // Minimap rendering
+  updateMinimap(player, npcManager, foodManager, dt) {
+    const canvas = this._minimapCanvas;
+    const ctx = this._minimapCtx;
+    const w = canvas.width;
+    const h = canvas.height;
+    const scale = this._minimapScale;
+    const cx = w / 2;
+    const cy = h / 2;
+    const px = player.x;
+    const pz = player.z;
+
+    // Record trail
+    this._minimapTrailTimer += dt;
+    if (this._minimapTrailTimer > 0.3) {
+      this._minimapTrailTimer = 0;
+      this._minimapTrail.push({ x: px, z: pz });
+      // Keep last 500 trail points
+      if (this._minimapTrail.length > 500) this._minimapTrail.shift();
+    }
+
+    // Clear & Render environmental zone background
+    const sampleStep = 4;
+    for (let x = 0; x < w; x += sampleStep) {
+      for (let y = 0; y < h; y += sampleStep) {
+        const wx = px + (x - cx) * scale;
+        const wz = pz + (y - cy) * scale;
+        const zone = getZoneAt(wx, wz);
+        
+        let r = 8, g = 14, b = 32;
+
+        // Temperature (Orange-Red vs Deep Indigo)
+        if (zone.temperature > 5.5) {
+          const t = (zone.temperature - 5.5) / 4.5;
+          r += t * 90;
+          g += t * 25;
+        } else if (zone.temperature < 4.5) {
+          const t = (4.5 - zone.temperature) / 4.5;
+          g += t * 20;
+          b += t * 50;
+        }
+
+        // Pressure (Purple)
+        if (zone.pressure > 5.5) {
+          const p = (zone.pressure - 5.5) / 4.5;
+          r += p * 40;
+          b += p * 60;
+        }
+
+        // Radiation (Yellowish Glow)
+        if (zone.radiation > 5.5) {
+          const rad = (zone.radiation - 5.5) / 4.5;
+          r += rad * 45;
+          g += rad * 45;
+        }
+
+        // Acidity (Bright Green)
+        if (zone.acidity > 5.5) {
+          const a = (zone.acidity - 5.5) / 4.5;
+          g += a * 60;
+        }
+
+        ctx.fillStyle = `rgb(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)})`;
+        ctx.fillRect(x, y, sampleStep, sampleStep);
+      }
+    }
+
+    // Draw grid
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.lineWidth = 1;
+    const gridSize = 200; // chunk size
+    const gridPixels = gridSize / scale;
+    const offsetX = ((px % gridSize) + gridSize) % gridSize / scale;
+    const offsetY = ((pz % gridSize) + gridSize) % gridSize / scale;
+    for (let gx = -offsetX; gx < w; gx += gridPixels) {
+      ctx.beginPath();
+      ctx.moveTo(gx, 0);
+      ctx.lineTo(gx, h);
+      ctx.stroke();
+    }
+    for (let gy = -offsetY; gy < h; gy += gridPixels) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(w, gy);
+      ctx.stroke();
+    }
+
+    // Draw trail (fading breadcrumbs)
+    const trail = this._minimapTrail;
+    for (let i = 0; i < trail.length; i++) {
+      const t = trail[i];
+      const sx = cx + (t.x - px) / scale;
+      const sy = cy + (t.z - pz) / scale;
+      if (sx < -2 || sx > w + 2 || sy < -2 || sy > h + 2) continue;
+      const alpha = 0.05 + (i / trail.length) * 0.2;
+      ctx.fillStyle = `rgba(100, 200, 255, ${alpha})`;
+      ctx.fillRect(sx - 0.5, sy - 0.5, 1, 1);
+    }
+
+    // Draw food
+    if (foodManager) {
+      const foodColors = {
+        vegetal: '#33cc55', iron: '#cc5500', sulfur: '#ddcc00',
+        radiation: '#aaff00', decomposed: '#886633', animal: '#ff5533'
+      };
+      const items = foodManager.getAll ? foodManager.getAll() : [];
+      for (const food of items) {
+        const sx = cx + (food.x - px) / scale;
+        const sy = cy + (food.z - pz) / scale;
+        if (sx < -2 || sx > w + 2 || sy < -2 || sy > h + 2) continue;
+        ctx.fillStyle = foodColors[food.type] || '#666666';
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(sx - 1, sy - 1, 2, 2);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Draw NPCs
+    if (npcManager) {
+      const npcs = npcManager.getAll();
+      for (const npc of npcs) {
+        if (npc.isDead) continue;
+        const sx = cx + (npc.x - px) / scale;
+        const sy = cy + (npc.z - pz) / scale;
+        if (sx < -2 || sx > w + 2 || sy < -2 || sy > h + 2) continue;
+        const isAlly = npc.speciesId === player.speciesId;
+        const isThreat = npc.radius > player.radius * 1.3;
+        if (isAlly) {
+          ctx.fillStyle = '#44ff88';
+        } else if (isThreat) {
+          ctx.fillStyle = '#ff4444';
+        } else {
+          ctx.fillStyle = '#ffaa44';
+        }
+        const r = Math.max(1.5, npc.radius / scale);
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Draw player (center, pulsing)
+    const pulse = 0.7 + Math.sin(Date.now() * 0.005) * 0.3;
+    ctx.fillStyle = `rgba(100, 200, 255, ${pulse})`;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(100, 200, 255, ${pulse * 0.5})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw direction indicator
+    const dirLen = 8;
+    const dirX = cx + Math.sin(player.angle) * dirLen;
+    const dirY = cy + Math.cos(player.angle) * dirLen;
+    ctx.strokeStyle = `rgba(100, 200, 255, ${pulse * 0.8})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(dirX, dirY);
+    ctx.stroke();
+
+    // Draw crosshair lines (cardinal directions)
+    ctx.strokeStyle = 'rgba(100, 200, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+    ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+    ctx.stroke();
+
+    // Update coords text
+    this._minimapCoords.textContent = `${Math.round(px)}, ${Math.round(pz)}`;
   }
 }

@@ -158,6 +158,9 @@ export class FoodManager {
     }
   }
 
+  // Get all food items (for minimap etc)
+  getAll() { return Array.from(this.items.values()).filter(i => i.alive); }
+
   // Find closest edible food within range
   findNearestEdible(x, z, canEatFn, range = CONFIG.FOOD_EAT_RANGE) {
     let best = null;

@@ -21,6 +21,10 @@ export class DNA {
     return false;
   }
 
+  hasAllEvolutions() {
+    return this.genes.size >= Object.keys(GENE_DEFS).length;
+  }
+
   canEvolve(geneId) {
     if (this.genes.has(geneId)) return false; // already owned
     if (this.tokens < 1) return false;

@@ -76,6 +76,7 @@ class Game {
       this.audio.playEat();
     };
     this.player.onEvolutionToken = () => {
+      if (this.player.dna.hasAllEvolutions()) return;
       this.audio.playEvolution();
       this.ui.notify('Evolução disponível! [ESC]', '#88ffcc');
       setTimeout(() => {
@@ -112,7 +113,7 @@ class Game {
         if (this.ui.isEvoMenuOpen()) {
           this.ui.closeEvoMenu();
           this.paused = false;
-        } else if (this.player.dna.tokens > 0) {
+        } else if (this.player.dna.tokens > 0 && !this.player.dna.hasAllEvolutions()) {
           this._openEvoMenu();
         }
       }
@@ -247,6 +248,7 @@ class Game {
     this.ui.updateZone(zone, this.player.dna);
     this.ui.updateInteractionHint(this.player.nearestAlly, this.player.nearestFood, this.player);
     this.ui.updateDamageOverlay(this.player.envDamageColor, this.player.envDamageIntensity || 0);
+    this.ui.updateMinimap(this.player, this.npcMgr, this.food, dt);
 
     // Camera shake
     const shake = this.ui.getCameraShakeOffset(dt);

@@ -16,6 +16,7 @@ export class Player extends Organism {
     this.keys = {};
     this.mouseWorld = { x: 0, z: 0 };
     this.mouseDown = false;
+    this.mouseFollowing = false;
 
     // Interaction state
     this.nearestAlly = null;
@@ -27,6 +28,8 @@ export class Player extends Organism {
 
     // Camera smooth follow
     this._camTarget = new THREE.Vector3();
+    this._camLookTarget = new THREE.Vector3();
+    this._camCurrentLook = new THREE.Vector3();
 
     // Damage/zone overlay
     this.envDamageColor = null;
@@ -44,22 +47,26 @@ export class Player extends Organism {
   _bindInput() {
     window.addEventListener('keydown', e => {
       this.keys[e.code] = true;
-      if (e.code === 'KeyW' && this.nearestAlly && !this.mating && this.mateCooldown <= 0) {
+      if (e.code === 'Space' && this.nearestAlly && !this.mating && this.mateCooldown <= 0) {
+        e.preventDefault();
         this._startMating();
       }
       if (e.code === 'KeyE') this._tryEat(window._game?.food);
     });
     window.addEventListener('keyup', e => { this.keys[e.code] = false; });
     window.addEventListener('mousemove', e => {
-      // Convert screen to world position (for attack direction)
+      // Convert screen to world position (for attack direction and follow)
       this.mouseWorld = this._screenToWorld(e.clientX, e.clientY);
     });
     window.addEventListener('mousedown', e => {
       if (e.button === 0) { this.mouseDown = true; }
+      if (e.button === 2) { this.mouseFollowing = true; } // right-click to follow mouse
     });
     window.addEventListener('mouseup', e => {
       if (e.button === 0) { this.mouseDown = false; }
+      if (e.button === 2) { this.mouseFollowing = false; }
     });
+    window.addEventListener('contextmenu', e => e.preventDefault());
   }
 
   _screenToWorld(screenX, screenY) {
@@ -133,6 +140,18 @@ export class Player extends Organism {
     if (this.keys['KeyS'] || this.keys['ArrowDown'])  mz += 1;
     if (this.keys['KeyA'] || this.keys['ArrowLeft'])  mx -= 1;
     if (this.keys['KeyD'] || this.keys['ArrowRight']) mx += 1;
+
+    // Mouse-follow movement (right-click held)
+    if (this.mouseFollowing && mx === 0 && mz === 0) {
+      const dx = this.mouseWorld.x - this.x;
+      const dz = this.mouseWorld.z - this.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      const deadZone = this.radius * 2; // don't move if mouse is very close
+      if (dist > deadZone) {
+        mx = dx / dist;
+        mz = dz / dist;
+      }
+    }
 
     if (mx !== 0 || mz !== 0) {
       const len = Math.sqrt(mx * mx + mz * mz);
@@ -286,10 +305,9 @@ export class Player extends Organism {
   }
 
   _updateCamera() {
-    // Smooth camera follow
-    this._camTarget.set(this.x, CONFIG.CAMERA_HEIGHT, this.z);
-    this.camera.position.lerp(this._camTarget, 0.08);
-    this.camera.lookAt(this.x, 0, this.z);
+    // Fixed top-down camera — player always perfectly centered, no rotation
+    this.camera.position.set(this.x, CONFIG.CAMERA_HEIGHT, this.z);
+    this.camera.lookAt(this.x, 0, this.z - 0.1);
   }
 
   _updateEnvDamageViz() {
